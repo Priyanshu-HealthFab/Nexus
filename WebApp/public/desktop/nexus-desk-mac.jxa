@@ -38,6 +38,7 @@ const SIZES = [
   ['Large (two-column matrix)', 560, 720]
 ];
 const OPACITY = [1, 0.92, 0.85, 0.75];
+const OPACITY_LABELS = ['Solid', 'Slightly see-through', 'See-through', 'Very see-through'];
 // Browsers "Open full Nexus" can use, when installed (bundle id, name).
 const BROWSERS = [
   ['com.brave.Browser', 'Brave'],
@@ -83,8 +84,10 @@ function applyMode() {
   } else {
     panel.level = mode === 'float' ? 3 : 0; // NSFloatingWindowLevel : NSNormalWindowLevel
     panel.collectionBehavior = mode === 'float' ? 1 | 256 : 0; // all Spaces + over full-screen apps
-    panel.hidesOnDeactivate = !!pref('autoHide', false);
+    panel.hidesOnDeactivate = mode === 'float' && !!pref('autoHide', false);
   }
+  // A normal window needs a Dock icon and a place in ⌘Tab, or it is lost once another app covers it.
+  $.NSApp.setActivationPolicy(mode === 'normal' ? 0 : 1);
   panel.alphaValue = pref('opacity', 1);
 }
 
@@ -299,17 +302,24 @@ function buildMenu() {
     modeMenu.addItem(it);
   });
   modeMenu.addItem($.NSMenuItem.separatorItem);
-  SIZES.forEach((x, i) => modeMenu.addItem(item('Size: ' + x[0], 'setSize:', '', i)));
+  const cur = panel ? panel.frame.size : null;
+  const nearest = cur ? SIZES.reduce((best, x, i) => (Math.abs(x[1] - cur.width) + Math.abs(x[2] - cur.height) < Math.abs(SIZES[best][1] - cur.width) + Math.abs(SIZES[best][2] - cur.height) ? i : best), 0) : -1;
+  const exact = cur && nearest >= 0 && Math.abs(SIZES[nearest][1] - cur.width) + Math.abs(SIZES[nearest][2] - cur.height) < 12;
+  SIZES.forEach((x, i) => {
+    const it = item('Size: ' + x[0], 'setSize:', '', i);
+    it.state = exact && i === nearest ? 1 : 0;
+    modeMenu.addItem(it);
+  });
   modeMenu.addItem($.NSMenuItem.separatorItem);
   OPACITY.forEach((o, i) => {
-    const it = item(o === 1 ? 'Opaque' : Math.round((1 - o) * 100) + '% see-through', 'setOpacity:', '', i);
+    const it = item(OPACITY_LABELS[i], 'setOpacity:', '', i);
     it.state = Math.abs(pref('opacity', 1) - o) < 0.001 ? 1 : 0;
     modeMenu.addItem(it);
   });
   modeMenu.addItem($.NSMenuItem.separatorItem);
   const autoHide = item('Hide when I click another app', 'toggleAutoHide:');
   autoHide.state = pref('autoHide', false) ? 1 : 0;
-  autoHide.enabled = mode !== 'desktop';
+  autoHide.enabled = mode === 'float';
   modeMenu.addItem(autoHide);
   modeRoot.submenu = modeMenu;
   m.addItem(modeRoot);
